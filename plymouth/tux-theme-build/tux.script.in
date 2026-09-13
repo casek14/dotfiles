@@ -1,0 +1,175 @@
+# tux -- Plymouth boot splash
+#
+# Generated from tux.script.in by make_plymouth.py.  Edit the template and
+# re-run the generator; this copy is overwritten.
+#
+# The animation is one centred sprite.  Plymouth paints the surrounding window
+# in the same flat colour the frames are rendered on, so the sprite has no
+# visible edge no matter what resolution the console comes up at.
+
+fps          = @FPS@;
+intro_count  = @INTRO_COUNT@;
+loop_count   = @LOOP_COUNT@;
+frame_w      = @FRAME_W@;
+frame_h      = @FRAME_H@;
+refresh_rate = 50;          # Plymouth calls refresh_callback 50x a second
+
+Window.SetBackgroundTopColor(@BG_R@, @BG_G@, @BG_B@);
+Window.SetBackgroundBottomColor(@BG_R@, @BG_G@, @BG_B@);
+
+#--------------------------------------------------------------- animation ----
+
+for (i = 0; i < intro_count; i++)
+  intro_image[i] = Image("intro-" + i + ".png");
+for (i = 0; i < loop_count; i++)
+  loop_image[i] = Image("loop-" + i + ".png");
+
+anim.x = Window.GetX() + (Window.GetWidth()  - frame_w) / 2;
+anim.y = Window.GetY() + (Window.GetHeight() - frame_h) / 2;
+anim.sprite = Sprite();
+anim.sprite.SetPosition(anim.x, anim.y, 1);
+anim.sprite.SetImage(intro_image[0]);
+
+# On shutdown/reboot there is no time for the walk-on, so start already seated.
+mode = Plymouth.GetMode();
+if (mode == "shutdown" || mode == "reboot")
+  skip_intro = 1;
+else
+  skip_intro = 0;
+
+tick = 0;
+
+fun refresh_callback ()
+  {
+    frame = Math.Int(tick * fps / refresh_rate);
+    tick++;
+
+    if (frame < intro_count && !skip_intro)
+        anim.sprite.SetImage(intro_image[frame]);
+    else
+      {
+        if (skip_intro)
+            n = frame % loop_count;
+        else
+            n = (frame - intro_count) % loop_count;
+        anim.sprite.SetImage(loop_image[n]);
+      }
+  }
+
+Plymouth.SetRefreshFunction (refresh_callback);
+
+#------------------------------------------------------------------ prompts ---
+# Text sits under the vignette, clamped so it stays on small consoles too.
+
+text_y   = Math.Min(anim.y + frame_h + 24, Window.GetHeight() - 96);
+bullet_y = text_y + 34;
+
+bullet.image = Image("bullet.png");
+prompt.sprite = Sprite();
+message.sprite = Sprite();
+
+fun centre_x (image)
+  {
+    return Window.GetX() + (Window.GetWidth() - image.GetWidth()) / 2;
+  }
+
+# The bullets live in global.dot: a name first assigned inside a function is
+# created in that call's local scope and freed on return, which would destroy
+# every bullet sprite the moment it was made.
+
+fun hide_prompt ()
+  {
+    prompt.sprite.SetOpacity(0);
+    for (i = 0; global.dot[i]; i++)
+      global.dot[i].sprite.SetOpacity(0);
+  }
+
+# systemd-cryptsetup hands us its own wording ("Please enter passphrase for
+# disk root:").  We ignore that text: it is long enough to run off a narrow
+# console, and Image.Text neither wraps nor truncates.
+fun display_password_callback (text, bullets)
+  {
+    prompt.image = Image.Text("Please enter the encryption passphrase",
+                              0.84, 0.82, 0.78);
+    if (prompt.image)
+      {
+        prompt.sprite.SetImage(prompt.image);
+        prompt.sprite.SetPosition(centre_x(prompt.image), text_y, 100);
+        prompt.sprite.SetOpacity(1);
+      }
+
+    gap   = bullet.image.GetWidth() + 5;
+
+    # A very long passphrase must not run off the edge; tighten the spacing
+    # instead so the count stays readable.
+    room = Window.GetWidth() - 80;
+    if (bullets * gap > room)
+        gap = Math.Int(room / bullets);
+
+    left  = Window.GetX() + (Window.GetWidth() - (bullets * gap - (gap - bullet.image.GetWidth()))) / 2;
+
+    for (i = 0; global.dot[i] || i < bullets; i++)
+      {
+        if (!global.dot[i])
+            global.dot[i].sprite = Sprite(bullet.image);
+        if (i < bullets)
+          {
+            global.dot[i].sprite.SetPosition(left + i * gap, bullet_y, 101);
+            global.dot[i].sprite.SetOpacity(1);
+          }
+        else
+            global.dot[i].sprite.SetOpacity(0);
+      }
+  }
+
+fun display_question_callback (text, entry)
+  {
+    prompt.image = Image.Text(text + "  " + entry, 0.84, 0.82, 0.78);
+    if (prompt.image)
+      {
+        prompt.sprite.SetImage(prompt.image);
+        prompt.sprite.SetPosition(centre_x(prompt.image), text_y, 100);
+        prompt.sprite.SetOpacity(1);
+      }
+  }
+
+fun display_normal_callback ()
+  {
+    hide_prompt();
+  }
+
+Plymouth.SetDisplayPasswordFunction (display_password_callback);
+Plymouth.SetDisplayQuestionFunction (display_question_callback);
+Plymouth.SetDisplayNormalFunction (display_normal_callback);
+
+#----------------------------------------------------------------- messages ---
+
+fun display_message_callback (text)
+  {
+    message.image = Image.Text(text, 0.55, 0.54, 0.52);
+    if (message.image)
+      {
+        message.sprite.SetImage(message.image);
+        message.sprite.SetPosition(centre_x(message.image),
+                                   Window.GetHeight() - 48, 100);
+        message.sprite.SetOpacity(1);
+      }
+  }
+
+fun hide_message_callback (text)
+  {
+    message.sprite.SetOpacity(0);
+  }
+
+Plymouth.SetDisplayMessageFunction (display_message_callback);
+Plymouth.SetHideMessageFunction (hide_message_callback);
+
+#--------------------------------------------------------------------- quit ---
+
+fun quit_callback ()
+  {
+    hide_prompt();
+    message.sprite.SetOpacity(0);
+  }
+
+Plymouth.SetQuitFunction (quit_callback);

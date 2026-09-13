@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Tux Nightshift Boot
+Description=Tux switches the light on, sits down and gets to work
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/tux
+ScriptFile=/usr/share/plymouth/themes/tux/tux.script
